@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0E7C74">
+<title>{% block title %}Khatabook{% endblock %}</title>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<script>
+(function () {
+  // Resolve the theme before first paint to avoid a flash of the wrong theme.
+  // Priority: logged-in user's saved preference > locally remembered choice > OS preference.
+  var serverTheme = {{ (current_theme if current_user.is_authenticated else none) | tojson }};
+  var stored = null;
+  try { stored = localStorage.getItem("kb-theme"); } catch (e) {}
+  var systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var theme = serverTheme || stored || (systemDark ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("kb-theme", theme); } catch (e) {}
+})();
+</script>
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<button type="button" class="theme-toggle" id="themeToggleBtn" aria-label="Toggle dark mode" title="Toggle dark mode">
+  <svg class="theme-toggle__icon theme-toggle__icon--sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  <svg class="theme-toggle__icon theme-toggle__icon--moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 6.8 6.8 0 0 0 20 14.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+</button>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flash-stack" id="flashStack">
+      {% for category, message in messages %}
+        <div class="flash flash--{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<div id="offlineBanner" class="offline-banner hidden">You're offline — showing saved data.</div>
+
+<main class="app-shell">
+{% block content %}{% endblock %}
+</main>
+
+{% if current_user.is_authenticated %}
+<nav class="bottom-nav" aria-label="Primary">
+  <a href="{{ url_for('dashboard') }}" class="bottom-nav__item {% if request.endpoint == 'dashboard' %}is-active{% endif %}">
+    <svg viewBox="0 0 24 24" class="bottom-nav__icon"><path d="M3 11.5 12 4l9 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Home</span>
+  </a>
+  <a href="{{ url_for('reports') }}" class="bottom-nav__item {% if request.endpoint == 'reports' %}is-active{% endif %}">
+    <svg viewBox="0 0 24 24" class="bottom-nav__icon"><path d="M4 20V10M12 20V4M20 20v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Reports</span>
+  </a>
+  <a href="{{ url_for('settings') }}" class="bottom-nav__item {% if request.endpoint == 'settings' %}is-active{% endif %}">
+    <svg viewBox="0 0 24 24" class="bottom-nav__icon"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.96 19a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.96a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Settings</span>
+  </a>
+</nav>
+{% endif %}
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}").catch(() => {});
+  });
+}
+window.addEventListener('online', () => document.getElementById('offlineBanner').classList.add('hidden'));
+window.addEventListener('offline', () => document.getElementById('offlineBanner').classList.remove('hidden'));
+if (!navigator.onLine) document.getElementById('offlineBanner').classList.remove('hidden');
+
+setTimeout(() => {
+  const stack = document.getElementById('flashStack');
+  if (stack) stack.classList.add('flash-stack--fade');
+}, 2600);
+
+window.CSRF_TOKEN = "{{ csrf_token() }}";
+window.CURRENCY_SYMBOL = {{ current_currency_symbol | tojson }};
+window.CURRENCY_CODE = {{ current_currency_code | tojson }};
+window.CURRENCY_LOCALE = {{ current_currency_locale | tojson }};
+window.IS_AUTHENTICATED = {{ (current_user.is_authenticated) | tojson }};
+
+(function () {
+  var btn = document.getElementById("themeToggleBtn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    var next = current === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("kb-theme", next); } catch (e) {}
+    document.dispatchEvent(new CustomEvent("kb-theme-changed", { detail: { theme: next } }));
+
+    if (window.IS_AUTHENTICATED) {
+      fetch("/api/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": window.CSRF_TOKEN },
+        body: JSON.stringify({ theme: next }),
+      }).catch(function () {});
+    }
+  });
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

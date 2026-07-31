@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Create account — Khatabook{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-brand">
+    <div class="auth-brand__mark">{{ current_currency_symbol }}</div>
+    <h1>Khatabook</h1>
+    <p>Track udhaar without a notebook.</p>
+  </div>
+
+  <form class="auth-card" method="POST" action="{{ url_for('register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Set up your shop</h2>
+    <label class="field">
+      <span>Business name</span>
+      <input type="text" name="business_name" placeholder="e.g. Ali General Store" value="{{ business_name or '' }}" required autofocus>
+    </label>
+    <label class="field">
+      <span>Phone number</span>
+      <input type="tel" name="phone" inputmode="numeric" autocomplete="tel" placeholder="03xx xxxxxxx" value="{{ phone or '' }}" required>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" autocomplete="new-password" minlength="4" required>
+    </label>
+    <button type="submit" class="btn btn--primary btn--block">Create account</button>
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+  </form>
+</div>
+{% endblock %}
