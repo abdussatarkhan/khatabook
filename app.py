@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import os
 from datetime import datetime, date, timedelta
 
 from flask import (
@@ -16,8 +17,8 @@ from models import db, User, Customer, Transaction, Reminder
 from currencies import CURRENCIES, DEFAULT_CURRENCY, currency_symbol, currency_locale
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "dev-secret-key-change-in-production"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///khatabook.db"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///khatabook.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
