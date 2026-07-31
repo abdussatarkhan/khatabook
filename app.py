@@ -432,6 +432,14 @@ def offline():
     return render_template("offline.html")
 
 
+@app.route("/.well-known/assetlinks.json")
+def assetlinks():
+    return send_file(
+        os.path.join(app.root_path, "static", ".well-known", "assetlinks.json"),
+        mimetype="application/json",
+    )
+
+
 @app.context_processor
 def inject_globals():
     if current_user.is_authenticated:
