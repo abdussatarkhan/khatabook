@@ -85,9 +85,9 @@ def generate_and_send_otp(user, purpose):
         send_otp_email(user.email, code, purpose, business_name=user.business_name)
     except MailerNotConfigured:
         flash(f"Email isn't configured on this server yet — your code is: {code}", "info")
-    except Exception:
+    except Exception as e:
+        app.logger.error(f"Failed to send OTP email to {user.email}: {e!r}")
         flash("We couldn't send the email right now, please try 'Resend code' in a moment.", "error")
-
 
 # ---------------------------------------------------------------------------
 # Auth
