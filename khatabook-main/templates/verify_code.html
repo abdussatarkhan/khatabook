@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Verify your email — Khatabook{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-brand">
+    <div class="auth-brand__mark">{{ current_currency_symbol }}</div>
+    <h1>Khatabook</h1>
+    <p>{% if purpose == 'register' %}One last step to secure your shop.{% else %}Confirm it's really you.{% endif %}</p>
+  </div>
+
+  <form class="auth-card" method="POST" action="{{ url_for('verify_email' if purpose == 'register' else 'verify_login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Enter verification code</h2>
+    <p class="otp-hint">We sent a 6-digit code to <strong>{{ email }}</strong>. It expires in 10 minutes.</p>
+    <label class="field">
+      <span>Verification code</span>
+      <input class="otp-input" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus>
+    </label>
+    <button type="submit" class="btn btn--primary btn--block">Verify</button>
+  </form>
+
+  <form method="POST" action="{{ url_for('resend_code') }}" style="text-align:center; margin-top: 12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="otp-resend">Didn't get it? Resend code</button>
+  </form>
+</div>
+{% endblock %}

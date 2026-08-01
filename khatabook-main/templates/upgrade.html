@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Upgrade — Khatabook{% endblock %}
+{% block body_class %}has-bottom-nav{% endblock %}
+{% block content %}
+<header class="topbar">
+  <div>
+    <p class="topbar__eyebrow">Khatabook Premium</p>
+    <h1 class="topbar__title">Upgrade your shop</h1>
+  </div>
+</header>
+
+{% if current_user.is_premium %}
+<div class="settings-card upgrade-active">
+  <p class="upgrade-active__title">✓ You're on Premium</p>
+  <p class="upgrade-active__hint">
+    Plan: {{ current_user.premium_plan|capitalize }} · Unlimited customers, PDF statements, and CSV export are unlocked.
+  </p>
+</div>
+{% else %}
+
+<div class="settings-card upgrade-status">
+  <p class="upgrade-status__label">Your usage</p>
+  <p class="upgrade-status__value">{{ customer_count }} / {{ free_limit }} customers used on the free plan</p>
+</div>
+
+<div class="upgrade-plans">
+  {% for key, plan in plans.items() %}
+  <div class="upgrade-plan{% if key == 'yearly' %} upgrade-plan--best{% endif %}" data-plan="{{ key }}">
+    {% if key == 'yearly' %}<span class="upgrade-plan__badge">Best value</span>{% endif %}
+    <p class="upgrade-plan__name">{{ plan.label }}</p>
+    <p class="upgrade-plan__price">₹{{ "%.0f"|format(plan.amount_paisa / 100) }}<span>/{{ 'yr' if key == 'yearly' else 'mo' }}</span></p>
+    <ul class="upgrade-plan__features">
+      <li>Unlimited customers</li>
+      <li>PDF customer statements</li>
+      <li>CSV export &amp; full backups</li>
+      <li>Priority WhatsApp reminders</li>
+    </ul>
+    <button type="button" class="btn btn--primary btn--block js-upgrade-btn" data-plan="{{ key }}" {% if not billing_configured %}disabled{% endif %}>
+      Choose {{ plan.label }}
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not billing_configured %}
+<p class="upgrade-status__hint" style="text-align:center;margin-top:14px;">
+  Payments aren't configured on this server yet.
+</p>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+(function () {
+  var buttons = document.querySelectorAll(".js-upgrade-btn");
+  buttons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var plan = btn.getAttribute("data-plan");
+      btn.disabled = true;
+      btn.textContent = "Starting...";
+
+      fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": window.CSRF_TOKEN },
+        body: JSON.stringify({ plan: plan }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (order) {
+          if (order.error) {
+            alert(order.error);
+            btn.disabled = false;
+            btn.textContent = "Try again";
+            return;
+          }
+
+          var rzp = new Razorpay({
+            key: order.key_id,
+            amount: order.amount,
+            currency: order.currency,
+            name: "Khatabook",
+            description: "Khatabook Premium — " + plan + " plan",
+            order_id: order.order_id,
+            prefill: {
+              name: order.business_name,
+              email: order.email,
+            },
+            theme: { color: "#0E7C74" },
+            handler: function (response) {
+              fetch("/api/payments/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": window.CSRF_TOKEN },
+                body: JSON.stringify(response),
+              })
+                .then(function (res) { return res.json(); })
+                .then(function (result) {
+                  if (result.ok) {
+                    window.location.href = result.redirect || "/";
+                  } else {
+                    alert(result.error || "Payment could not be verified.");
+                    btn.disabled = false;
+                    btn.textContent = "Try again";
+                  }
+                });
+            },
+            modal: {
+              ondismiss: function () {
+                btn.disabled = false;
+                btn.textContent = "Choose " + plan;
+              },
+            },
+          });
+          rzp.open();
+        })
+        .catch(function () {
+          alert("Something went wrong. Please try again.");
+          btn.disabled = false;
+          btn.textContent = "Try again";
+        });
+    });
+  });
+})();
+</script>
+{% endblock %}
