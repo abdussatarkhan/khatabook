@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -12,10 +12,17 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     business_name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     theme = db.Column(db.String(10), nullable=False, default="light")  # 'light' | 'dark'
     currency = db.Column(db.String(3), nullable=False, default="INR")  # ISO 4217 code
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    otp_code_hash = db.Column(db.String(255), nullable=True)
+    otp_purpose = db.Column(db.String(20), nullable=True)  # 'register' | 'login'
+    otp_expires_at = db.Column(db.DateTime, nullable=True)
+    otp_attempts = db.Column(db.Integer, nullable=False, default=0)
 
     customers = db.relationship(
         "Customer", backref="owner", lazy=True, cascade="all, delete-orphan"
@@ -26,6 +33,30 @@ class User(UserMixin, db.Model):
 
     def check_password(self, raw_password):
         return check_password_hash(self.password_hash, raw_password)
+
+    def set_otp(self, code, purpose, ttl_minutes=10):
+        self.otp_code_hash = generate_password_hash(code)
+        self.otp_purpose = purpose
+        self.otp_expires_at = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+        self.otp_attempts = 0
+
+    def check_otp(self, code, purpose):
+        if not self.otp_code_hash or self.otp_purpose != purpose:
+            return False
+        if not self.otp_expires_at or datetime.utcnow() > self.otp_expires_at:
+            return False
+        if self.otp_attempts >= 5:
+            return False
+        ok = check_password_hash(self.otp_code_hash, code)
+        if not ok:
+            self.otp_attempts = (self.otp_attempts or 0) + 1
+        return ok
+
+    def clear_otp(self):
+        self.otp_code_hash = None
+        self.otp_purpose = None
+        self.otp_expires_at = None
+        self.otp_attempts = 0
 
 
 class Customer(db.Model):
