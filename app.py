@@ -120,31 +120,26 @@ def register():
 
     if request.method == "POST":
         business_name = request.form.get("business_name", "").strip()
-        phone = request.form.get("phone", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
         error = None
         if not business_name:
             error = "Business name is required."
-        elif not phone:
-            error = "Phone number is required."
         elif not email or not EMAIL_RE.match(email):
             error = "A valid email address is required."
         elif len(password) < 4:
             error = "Password must be at least 4 characters."
-        elif User.query.filter_by(phone=phone).first():
-            error = "An account with this phone number already exists."
         elif User.query.filter_by(email=email).first():
             error = "An account with this email already exists."
 
         if error:
             flash(error, "error")
             return render_template(
-                "register.html", business_name=business_name, phone=phone, email=email
+                "register.html", business_name=business_name, email=email
             )
 
-        user = User(business_name=business_name, phone=phone, email=email)
+        user = User(business_name=business_name, email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -186,9 +181,9 @@ def login():
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-        phone = request.form.get("phone", "").strip()
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        user = User.query.filter_by(phone=phone).first()
+        user = User.query.filter_by(email=email).first()
 
         if user and user.check_password(password):
             if not user.email_verified:
@@ -202,8 +197,8 @@ def login():
             flash(f"We sent a login code to {user.email}.", "success")
             return redirect(url_for("verify_login"))
 
-        flash("Incorrect phone number or password.", "error")
-        return render_template("login.html", phone=phone)
+        flash("Incorrect email or password.", "error")
+        return render_template("login.html", email=email)
 
     return render_template("login.html")
 
@@ -579,11 +574,8 @@ def export_csv():
 def settings():
     if request.method == "POST":
         business_name = request.form.get("business_name", "").strip()
-        phone = request.form.get("phone", "").strip()
         if business_name:
             current_user.business_name = business_name
-        if phone:
-            current_user.phone = phone
         db.session.commit()
         flash("Settings updated.", "success")
         return redirect(url_for("settings"))
@@ -597,7 +589,7 @@ def export_json():
     customers = Customer.query.filter_by(user_id=current_user.id).all()
     data = {
         "business_name": current_user.business_name,
-        "phone": current_user.phone,
+        "email": current_user.email,
         "exported_at": datetime.utcnow().isoformat(),
         "customers": [],
     }
@@ -686,7 +678,6 @@ def create_order():
         "plan": plan,
         "business_name": current_user.business_name,
         "email": current_user.email,
-        "contact": current_user.phone,
     })
 
 

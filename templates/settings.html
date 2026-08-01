@@ -16,8 +16,8 @@
     <input type="text" name="business_name" value="{{ current_user.business_name }}" required>
   </label>
   <label class="field">
-    <span>Phone number</span>
-    <input type="tel" name="phone" value="{{ current_user.phone }}" required>
+    <span>Gmail / email address</span>
+    <input type="email" value="{{ current_user.email }}" disabled>
   </label>
   <button type="submit" class="btn btn--primary btn--block">Save changes</button>
 </form>

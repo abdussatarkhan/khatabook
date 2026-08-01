@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from app import app
 from models import db, User, Customer, Transaction
 
-DEMO_PHONE = "03001234567"
 DEMO_EMAIL = "demo@khatabook.local"
 DEMO_PASSWORD = "demo1234"
 
@@ -29,11 +28,11 @@ def seed():
     with app.app_context():
         db.create_all()
 
-        if User.query.filter_by(phone=DEMO_PHONE).first():
+        if User.query.filter_by(email=DEMO_EMAIL).first():
             print("Demo data already exists — skipping.")
             return
 
-        user = User(business_name="Ali General Store", phone=DEMO_PHONE, email=DEMO_EMAIL, email_verified=True)
+        user = User(business_name="Ali General Store", email=DEMO_EMAIL, email_verified=True)
         user.set_password(DEMO_PASSWORD)
         db.session.add(user)
         db.session.flush()
@@ -64,7 +63,7 @@ def seed():
 
         db.session.commit()
         print("Seeded demo account:")
-        print(f"  Phone:    {DEMO_PHONE}")
+        print(f"  Email:    {DEMO_EMAIL}")
         print(f"  Password: {DEMO_PASSWORD}")
 
 
