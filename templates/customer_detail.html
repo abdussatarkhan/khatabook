@@ -13,6 +13,9 @@
     <h1>{{ customer.name }}</h1>
     <span>{{ customer.phone or 'No phone number' }}</span>
   </div>
+  <a href="{{ url_for('customer_pdf', customer_id=customer.id) }}" class="icon-btn" aria-label="Download PDF statement" title="Download PDF statement">
+    <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </a>
   <button type="button" class="icon-btn" id="reminderBtn" aria-label="Send reminder">
     <svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6v3.6c0 .5-.2 1-.5 1.4L4 16h16l-1.5-2c-.3-.4-.5-.9-.5-1.4V9a6 6 0 0 0-6-6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
   </button>

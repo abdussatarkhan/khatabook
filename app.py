@@ -2,11 +2,13 @@ import csv
 import io
 import json
 import os
+import random
+import re
 from datetime import datetime, date, timedelta
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash,
-    jsonify, Response, send_file
+    jsonify, Response, send_file, session
 )
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
@@ -15,6 +17,9 @@ from flask_wtf import CSRFProtect
 
 from models import db, User, Customer, Transaction, Reminder
 from currencies import CURRENCIES, DEFAULT_CURRENCY, currency_symbol, currency_locale
+from mailer import send_otp_email, MailerNotConfigured
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -66,6 +71,24 @@ def customer_summary(c: Customer):
     }
 
 
+def generate_and_send_otp(user, purpose):
+    """Generate a 6-digit code, save its hash on the user, and email it.
+
+    If SMTP isn't configured (e.g. running locally without env vars), the
+    code is flashed on screen instead so registration/login still works
+    during development.
+    """
+    code = f"{random.randint(0, 999999):06d}"
+    user.set_otp(code, purpose)
+    db.session.commit()
+    try:
+        send_otp_email(user.email, code, purpose, business_name=user.business_name)
+    except MailerNotConfigured:
+        flash(f"Email isn't configured on this server yet — your code is: {code}", "info")
+    except Exception:
+        flash("We couldn't send the email right now, please try 'Resend code' in a moment.", "error")
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -78,6 +101,7 @@ def register():
     if request.method == "POST":
         business_name = request.form.get("business_name", "").strip()
         phone = request.form.get("phone", "").strip()
+        email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
         error = None
@@ -85,24 +109,55 @@ def register():
             error = "Business name is required."
         elif not phone:
             error = "Phone number is required."
+        elif not email or not EMAIL_RE.match(email):
+            error = "A valid email address is required."
         elif len(password) < 4:
             error = "Password must be at least 4 characters."
         elif User.query.filter_by(phone=phone).first():
             error = "An account with this phone number already exists."
+        elif User.query.filter_by(email=email).first():
+            error = "An account with this email already exists."
 
         if error:
             flash(error, "error")
-            return render_template("register.html", business_name=business_name, phone=phone)
+            return render_template(
+                "register.html", business_name=business_name, phone=phone, email=email
+            )
 
-        user = User(business_name=business_name, phone=phone)
+        user = User(business_name=business_name, phone=phone, email=email)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        login_user(user)
-        flash("Account created. Welcome!", "success")
-        return redirect(url_for("dashboard"))
+
+        generate_and_send_otp(user, "register")
+        session["pending_uid"] = user.id
+        flash(f"We sent a verification code to {email}.", "success")
+        return redirect(url_for("verify_email"))
 
     return render_template("register.html")
+
+
+@app.route("/verify-email", methods=["GET", "POST"])
+def verify_email():
+    uid = session.get("pending_uid")
+    user = db.session.get(User, uid) if uid else None
+    if not user or user.email_verified:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        if user.check_otp(code, "register"):
+            user.email_verified = True
+            user.clear_otp()
+            db.session.commit()
+            session.pop("pending_uid", None)
+            login_user(user)
+            flash("Email verified. Welcome to Khatabook!", "success")
+            return redirect(url_for("dashboard"))
+        db.session.commit()  # persist attempt count
+        flash("That code is incorrect or has expired.", "error")
+
+    return render_template("verify_code.html", email=user.email, purpose="register")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -116,13 +171,55 @@ def login():
         user = User.query.filter_by(phone=phone).first()
 
         if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for("dashboard"))
+            if not user.email_verified:
+                generate_and_send_otp(user, "register")
+                session["pending_uid"] = user.id
+                flash("Please verify your email to finish setting up your account.", "error")
+                return redirect(url_for("verify_email"))
+
+            generate_and_send_otp(user, "login")
+            session["pending_uid"] = user.id
+            flash(f"We sent a login code to {user.email}.", "success")
+            return redirect(url_for("verify_login"))
 
         flash("Incorrect phone number or password.", "error")
         return render_template("login.html", phone=phone)
 
     return render_template("login.html")
+
+
+@app.route("/verify-login", methods=["GET", "POST"])
+def verify_login():
+    uid = session.get("pending_uid")
+    user = db.session.get(User, uid) if uid else None
+    if not user:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        if user.check_otp(code, "login"):
+            user.clear_otp()
+            db.session.commit()
+            session.pop("pending_uid", None)
+            login_user(user)
+            return redirect(url_for("dashboard"))
+        db.session.commit()
+        flash("That code is incorrect or has expired.", "error")
+
+    return render_template("verify_code.html", email=user.email, purpose="login")
+
+
+@app.route("/resend-code", methods=["POST"])
+def resend_code():
+    uid = session.get("pending_uid")
+    user = db.session.get(User, uid) if uid else None
+    if not user:
+        return redirect(url_for("login"))
+
+    purpose = "register" if not user.email_verified else "login"
+    generate_and_send_otp(user, purpose)
+    flash(f"We sent a new code to {user.email}.", "success")
+    return redirect(url_for("verify_email" if purpose == "register" else "verify_login"))
 
 
 @app.route("/logout")
@@ -193,6 +290,82 @@ def customer_detail(customer_id):
     customer = Customer.query.filter_by(id=customer_id, user_id=current_user.id).first_or_404()
     transactions = sorted(customer.transactions, key=lambda t: (t.date, t.id))
     return render_template("customer_detail.html", customer=customer, transactions=transactions)
+
+
+@app.route("/customer/<int:customer_id>/pdf")
+@login_required
+def customer_pdf(customer_id):
+    customer = Customer.query.filter_by(id=customer_id, user_id=current_user.id).first_or_404()
+    transactions = sorted(customer.transactions, key=lambda t: (t.date, t.id))
+    symbol = currency_symbol(current_user.currency or DEFAULT_CURRENCY)
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    )
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph(current_user.business_name, styles["Title"]))
+    story.append(Paragraph("Customer Ledger Statement", styles["Heading2"]))
+    story.append(Spacer(1, 6))
+
+    meta_lines = [f"Customer: {customer.name}"]
+    if customer.phone:
+        meta_lines.append(f"Phone: {customer.phone}")
+    meta_lines.append(f"Statement date: {datetime.utcnow().strftime('%d %b %Y')}")
+    for line in meta_lines:
+        story.append(Paragraph(line, styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    data = [["Date", "Type", "Note", f"Amount ({symbol})", f"Balance ({symbol})"]]
+    running = 0
+    for t in transactions:
+        running += t.amount_paisa if t.type == "credit" else -t.amount_paisa
+        data.append([
+            t.date.strftime("%d %b %Y"),
+            "You'll Get" if t.type == "credit" else "You'll Give",
+            (t.note or "-")[:40],
+            f"{paisa_to_rupees(t.amount_paisa):,.2f}",
+            f"{paisa_to_rupees(running):,.2f}",
+        ])
+
+    table = Table(data, colWidths=[24 * mm, 26 * mm, 60 * mm, 30 * mm, 30 * mm], repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0E7C74")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D8DEE1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6F7")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (3, 0), (4, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(table)
+
+    story.append(Spacer(1, 14))
+    bal = customer.balance_rupees
+    label = "Customer owes you" if bal > 0 else ("You owe customer" if bal < 0 else "Settled up")
+    story.append(Paragraph(f"<b>Final balance:</b> {label} — {symbol}{abs(bal):,.2f}", styles["Heading3"]))
+
+    doc.build(story)
+    buf.seek(0)
+
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", customer.name).strip("_") or "customer"
+    return send_file(
+        buf, mimetype="application/pdf", as_attachment=True,
+        download_name=f"{safe_name}_statement.pdf",
+    )
 
 
 @app.route("/api/customers/<int:customer_id>", methods=["DELETE"])
@@ -504,6 +677,18 @@ def _migrate_new_columns():
             conn.execute(text("ALTER TABLE users ADD COLUMN theme VARCHAR(10) DEFAULT 'light'"))
         if "currency" not in existing_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN currency VARCHAR(3) DEFAULT 'INR'"))
+        if "email" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(255)"))
+        if "email_verified" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0"))
+        if "otp_code_hash" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN otp_code_hash VARCHAR(255)"))
+        if "otp_purpose" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN otp_purpose VARCHAR(20)"))
+        if "otp_expires_at" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN otp_expires_at DATETIME"))
+        if "otp_attempts" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN otp_attempts INTEGER DEFAULT 0"))
 
 
 # Ensure tables (and any new columns) exist regardless of how the app is

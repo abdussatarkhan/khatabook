@@ -9,6 +9,7 @@ from app import app
 from models import db, User, Customer, Transaction
 
 DEMO_PHONE = "03001234567"
+DEMO_EMAIL = "demo@khatabook.local"
 DEMO_PASSWORD = "demo1234"
 
 CUSTOMERS = [
@@ -32,7 +33,7 @@ def seed():
             print("Demo data already exists — skipping.")
             return
 
-        user = User(business_name="Ali General Store", phone=DEMO_PHONE)
+        user = User(business_name="Ali General Store", phone=DEMO_PHONE, email=DEMO_EMAIL, email_verified=True)
         user.set_password(DEMO_PASSWORD)
         db.session.add(user)
         db.session.flush()

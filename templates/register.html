@@ -21,11 +21,21 @@
       <input type="tel" name="phone" inputmode="numeric" autocomplete="tel" placeholder="03xx xxxxxxx" value="{{ phone or '' }}" required>
     </label>
     <label class="field">
+      <span>Gmail / email address</span>
+      <input type="email" name="email" autocomplete="email" placeholder="you@gmail.com" value="{{ email or '' }}" required>
+    </label>
+    <label class="field">
       <span>Password</span>
-      <input type="password" name="password" autocomplete="new-password" minlength="4" required>
+      <div class="password-field">
+        <input type="password" name="password" id="registerPassword" autocomplete="new-password" minlength="4" required>
+        <button type="button" class="password-toggle" data-target="registerPassword" aria-label="Show password">Show</button>
+      </div>
     </label>
     <button type="submit" class="btn btn--primary btn--block">Create account</button>
     <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/password-toggle.js') }}"></script>
 {% endblock %}

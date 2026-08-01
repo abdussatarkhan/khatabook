@@ -4,6 +4,8 @@ A mobile-installable Flask PWA for shopkeepers to track customer credit (udhaar)
 
 ## Features
 
+- **Email-verified accounts & 2-step login** — sign up with your Gmail (or any email), confirm it with a 6-digit code, and every login sends a fresh code to your email before you're let in. Passwords have a Show/Hide toggle.
+- **PDF customer statements** — download a polished PDF ledger for any customer (business name, transaction history, running balance) from their profile page.
 - **Light/dark theme** — toggle from the floating button on any screen or the switch in Settings. Saved per account and synced across devices; falls back to your device's system preference before you log in.
 - **Multi-currency support** — pick your currency (₹ INR, ₨ PKR, $ USD, € EUR, £ GBP, and ~35 others) in Settings; every amount, chart, CSV export, and WhatsApp reminder message updates instantly.
 - Phone + password login for shopkeepers
@@ -93,3 +95,19 @@ All amounts are stored as **integer paisa** (`amount_paisa`) in the database —
 ## A note on production use
 
 The built-in `flask run` server is for development only. To actually deploy this (e.g. so a shopkeeper can reach it from their phone over the internet), run it behind a production WSGI server such as **gunicorn** or **waitress**, and change `SECRET_KEY` in `app.py` to a real secret loaded from an environment variable.
+
+## Setting up email sending (required for signup/login codes)
+
+This app sends verification codes by email using SMTP. Without these environment variables set, the app still works for testing — it will show the code directly on screen instead of emailing it — but for real use you need to configure a real mail sender.
+
+**Using Gmail:**
+1. Turn on 2-Step Verification on the Gmail account you want to send from: https://myaccount.google.com/security
+2. Create an "App Password": https://myaccount.google.com/apppasswords (choose "Mail" as the app)
+3. Set these environment variables wherever you deploy (e.g. Render → your service → Environment):
+   - `SMTP_HOST` = `smtp.gmail.com`
+   - `SMTP_PORT` = `587`
+   - `SMTP_USER` = your full Gmail address
+   - `SMTP_PASS` = the 16-character App Password (not your normal Gmail password)
+   - `MAIL_FROM` = same as `SMTP_USER` (optional, defaults to it)
+
+Any other SMTP provider (SendGrid, Mailgun, your own mail server, etc.) works the same way — just point `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` at it.
