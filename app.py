@@ -15,11 +15,31 @@ from flask_login import (
 )
 from flask_wtf import CSRFProtect
 
-from models import db, User, Customer, Transaction, Reminder
+import razorpay
+
+from models import db, User, Customer, Transaction, Reminder, Payment
 from currencies import CURRENCIES, DEFAULT_CURRENCY, currency_symbol, currency_locale
 from mailer import send_otp_email, MailerNotConfigured
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# ---------------------------------------------------------------------------
+# Premium / billing config
+# ---------------------------------------------------------------------------
+FREE_CUSTOMER_LIMIT = 20  # free accounts can add up to this many customers
+
+PREMIUM_PLANS = {
+    "monthly": {"label": "Monthly", "amount_paisa": 14900},   # ₹149/month
+    "yearly": {"label": "Yearly", "amount_paisa": 99900},     # ₹999/year
+}
+
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
+razorpay_client = (
+    razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET
+    else None
+)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -264,6 +284,14 @@ def create_customer():
 
     if not name:
         return jsonify({"error": "Name is required."}), 400
+
+    if not current_user.is_premium:
+        existing_count = Customer.query.filter_by(user_id=current_user.id).count()
+        if existing_count >= FREE_CUSTOMER_LIMIT:
+            return jsonify({
+                "error": f"Free plan is limited to {FREE_CUSTOMER_LIMIT} customers. Upgrade to add more.",
+                "upgrade_required": True,
+            }), 402
 
     customer = Customer(user_id=current_user.id, name=name, phone=phone or None)
     db.session.add(customer)
@@ -597,6 +625,115 @@ def export_json():
 
 
 # ---------------------------------------------------------------------------
+# Billing / Premium (Razorpay)
+# ---------------------------------------------------------------------------
+
+@app.route("/upgrade")
+@login_required
+def upgrade():
+    customer_count = Customer.query.filter_by(user_id=current_user.id).count()
+    return render_template(
+        "upgrade.html",
+        plans=PREMIUM_PLANS,
+        razorpay_key_id=RAZORPAY_KEY_ID,
+        customer_count=customer_count,
+        free_limit=FREE_CUSTOMER_LIMIT,
+        billing_configured=razorpay_client is not None,
+    )
+
+
+@app.route("/api/payments/create-order", methods=["POST"])
+@login_required
+def create_order():
+    if razorpay_client is None:
+        return jsonify({"error": "Payments are not configured yet. Please try again later."}), 503
+
+    data = request.get_json(silent=True) or {}
+    plan = data.get("plan")
+    if plan not in PREMIUM_PLANS:
+        return jsonify({"error": "Invalid plan."}), 400
+
+    if current_user.is_premium:
+        return jsonify({"error": "You're already on the premium plan."}), 400
+
+    amount_paisa = PREMIUM_PLANS[plan]["amount_paisa"]
+
+    try:
+        order = razorpay_client.order.create({
+            "amount": amount_paisa,
+            "currency": "INR",
+            "notes": {"user_id": current_user.id, "plan": plan},
+        })
+    except Exception:
+        return jsonify({"error": "Could not start payment. Please try again."}), 502
+
+    payment = Payment(
+        user_id=current_user.id,
+        plan=plan,
+        amount_paisa=amount_paisa,
+        currency="INR",
+        razorpay_order_id=order["id"],
+        status="created",
+    )
+    db.session.add(payment)
+    db.session.commit()
+
+    return jsonify({
+        "order_id": order["id"],
+        "amount": amount_paisa,
+        "currency": "INR",
+        "key_id": RAZORPAY_KEY_ID,
+        "plan": plan,
+        "business_name": current_user.business_name,
+        "email": current_user.email,
+        "contact": current_user.phone,
+    })
+
+
+@app.route("/api/payments/verify", methods=["POST"])
+@login_required
+def verify_payment():
+    if razorpay_client is None:
+        return jsonify({"error": "Payments are not configured yet."}), 503
+
+    data = request.get_json(silent=True) or {}
+    order_id = data.get("razorpay_order_id")
+    payment_id = data.get("razorpay_payment_id")
+    signature = data.get("razorpay_signature")
+
+    if not (order_id and payment_id and signature):
+        return jsonify({"error": "Missing payment details."}), 400
+
+    payment = Payment.query.filter_by(
+        razorpay_order_id=order_id, user_id=current_user.id
+    ).first_or_404()
+
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            "razorpay_order_id": order_id,
+            "razorpay_payment_id": payment_id,
+            "razorpay_signature": signature,
+        })
+    except razorpay.errors.SignatureVerificationError:
+        payment.status = "failed"
+        db.session.commit()
+        return jsonify({"error": "Payment verification failed."}), 400
+
+    payment.razorpay_payment_id = payment_id
+    payment.razorpay_signature = signature
+    payment.status = "paid"
+    payment.paid_at = datetime.utcnow()
+
+    current_user.is_premium = True
+    current_user.premium_since = datetime.utcnow()
+    current_user.premium_plan = payment.plan
+
+    db.session.commit()
+
+    return jsonify({"ok": True, "redirect": url_for("dashboard")})
+
+
+# ---------------------------------------------------------------------------
 # PWA
 # ---------------------------------------------------------------------------
 
@@ -689,6 +826,12 @@ def _migrate_new_columns():
             conn.execute(text("ALTER TABLE users ADD COLUMN otp_expires_at DATETIME"))
         if "otp_attempts" not in existing_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN otp_attempts INTEGER DEFAULT 0"))
+        if "is_premium" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0"))
+        if "premium_since" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN premium_since DATETIME"))
+        if "premium_plan" not in existing_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN premium_plan VARCHAR(20)"))
 
 
 # Ensure tables (and any new columns) exist regardless of how the app is

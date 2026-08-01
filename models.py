@@ -24,8 +24,15 @@ class User(UserMixin, db.Model):
     otp_expires_at = db.Column(db.DateTime, nullable=True)
     otp_attempts = db.Column(db.Integer, nullable=False, default=0)
 
+    is_premium = db.Column(db.Boolean, nullable=False, default=False)
+    premium_since = db.Column(db.DateTime, nullable=True)
+    premium_plan = db.Column(db.String(20), nullable=True)  # 'monthly' | 'yearly'
+
     customers = db.relationship(
         "Customer", backref="owner", lazy=True, cascade="all, delete-orphan"
+    )
+    payments = db.relationship(
+        "Payment", backref="user", lazy=True, cascade="all, delete-orphan"
     )
 
     def set_password(self, raw_password):
@@ -132,6 +139,22 @@ class Transaction(db.Model):
             "note": self.note,
             "date": self.date.isoformat(),
         }
+
+
+class Payment(db.Model):
+    __tablename__ = "payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    plan = db.Column(db.String(20), nullable=False)  # 'monthly' | 'yearly'
+    amount_paisa = db.Column(db.Integer, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default="INR")
+    razorpay_order_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    razorpay_payment_id = db.Column(db.String(64), nullable=True)
+    razorpay_signature = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(10), nullable=False, default="created")  # created | paid | failed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    paid_at = db.Column(db.DateTime, nullable=True)
 
 
 class Reminder(db.Model):
