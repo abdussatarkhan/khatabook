@@ -1,5 +1,6 @@
 # Digital Ledger & Store Cashbook Management System
 
+[![CI](https://github.com/abdussatarkhan/khatabook/actions/workflows/ci.yml/badge.svg)](https://github.com/abdussatarkhan/khatabook/actions)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/) [![SQLite](https://img.shields.io/badge/SQLite-Local_Storage-07405E?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/) [![Accounting](https://img.shields.io/badge/FinTech-Ledger_Engine-2E7D32?style=for-the-badge)](https://en.wikipedia.org/wiki/Ledger)
 [![Author](https://img.shields.io/badge/Author-Abdussatar-E50914?style=for-the-badge&logo=github&logoColor=white)](https://github.com/abdussatarkhan)
 
@@ -34,6 +35,16 @@ graph TD
 git clone https://github.com/abdussatarkhan/khatabook.git
 cd khatabook
 ```
+
+---
+
+## 🗺️ Roadmap & Upcoming Features
+
+- [x] Digital customer debit/credit ledger (Udhar tracking)
+- [x] Local SQLite encrypted database persistence
+- [ ] Automated WhatsApp / SMS payment reminder integration
+- [ ] Daily cash flow summary PDF report generator
+- [ ] Multi-device cloud sync and backup
 
 ---
 
